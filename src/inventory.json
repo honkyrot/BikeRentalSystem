@@ -1,0 +1,16 @@
+[
+    {
+        "id": 1,
+        "make": "Trek",
+        "model": "FX 3",
+        "status": "rented",
+        "hourly_rate": 7
+    },
+    {
+        "id": 2,
+        "make": "Giant",
+        "model": "Escape 2",
+        "status": "available",
+        "hourly_rate": 6
+    }
+]
