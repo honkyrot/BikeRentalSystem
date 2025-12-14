@@ -8,3 +8,9 @@ class Bike:
 
     def __repr__(self):
         return f"Bike({self.id}, {self.make}, {self.model}, {self.status}, ${self.hourly_rate}/hr)"
+
+    def markRented(self):
+        self.status = 'rented'
+
+    def markAvaliable(self):
+        self.status = 'available'
