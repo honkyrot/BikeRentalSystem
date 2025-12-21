@@ -1,106 +1,138 @@
-from bike import Bike
-from customer import Customer
-from ticket import Ticket
-from datetime import datetime
 import json
+from datetime import datetime
+from ticket import Ticket
 
 class RentalManager:
+
     def __init__(self):
-        self.inventory = []  # list of Bike objects
-        self.active_tickets = {}  # dict: ticket_id -> Ticket
-        self.load_data()
+        self.inventory = []
+        self.active_tickets = []
+        self.closed_tickets = []
+        self.bike_lookup = {}
+        self.ticket_lookup = {}
+        self.load_inventory()
+        self.load_tickets()
 
-    # --------------------
-    # JSON Persistence
-    # --------------------
-    def load_data(self, inventory_file='inventory.json', tickets_file='tickets.json'):
-        """Load bikes and tickets from JSON files."""
-        # Load bikes
-        try:
-            with open(inventory_file, 'r') as f:
-                bikes_data = json.load(f)
-                self.inventory = [Bike(**b) for b in bikes_data]
-        except FileNotFoundError:
-            self.inventory = []
-
-        # Load tickets
-        try:
-            with open(tickets_file, 'r') as f:
-                tickets_data = json.load(f)
-                self.active_tickets = {t['id']: Ticket(**t) for t in tickets_data}
-        except FileNotFoundError:
-            self.active_tickets = {}
-
-    def save_data(self, inventory_file='inventory.json', tickets_file='tickets.json'):
-        """Save bikes and tickets to JSON files."""
-        with open(inventory_file, 'w') as f:
-            json.dump([b.__dict__ for b in self.inventory], f, indent=4)
-        with open(tickets_file, 'w') as f:
-            json.dump([t.__dict__ for t in self.active_tickets.values()], f, indent=4)
-
-    # --------------------
-    # Bike Inventory
-    # --------------------
-    def add_bike(self, bike: Bike):
-        """Add a new bike to the inventory."""
+    # ------------------------------
+    # INVENTORY MANAGEMENT
+    # ------------------------------
+    def add_bike(self, bike):
         self.inventory.append(bike)
-        self.save_data()
+        self.bike_lookup[bike.bike_id] = bike
+        self.save_inventory()
 
-    def list_available_bikes(self):
-        """Return a list of bikes that are available for rental."""
-        return [b for b in self.inventory if b.status == 'available']
+    def get_available_bikes(self):
+        return [bike for bike in self.inventory if bike.status == "available"]
 
-    # --------------------
-    # Ticket Management
-    # --------------------
-    def create_ticket(self, customer: Customer, bike_id: int, hours: int):
-        """Create a new rental ticket."""
-        bike = next((b for b in self.inventory if b.id == bike_id and b.status == 'available'), None)
-        if not bike:
-            raise ValueError("Bike not available")
+    # ------------------------------
+    # TICKET MANAGEMENT
+    # ------------------------------
+    def create_ticket(self, ticket_id, bike_id, customer, planned_hours):
+        bike = self.bike_lookup.get(bike_id)
+        if not bike or bike.status != "available":
+            print(f"Bike {bike_id} is not available.")
+            return None
 
-        ticket_id = len(self.active_tickets) + 1
-        start_time = datetime.now()
         ticket = Ticket(
-            id=ticket_id,
+            ticket_id=ticket_id,
             bike=bike,
             customer=customer,
-            start_time=start_time,
-            planned_hours=hours,
-            end_time=None,
-            total_fee=0
+            start_time=datetime.now(),
+            planned_hours=planned_hours
         )
-        self.active_tickets[ticket_id] = ticket
-        bike.status = 'rented'
-        self.save_data()
+        bike.status = "rented"
+        self.active_tickets.append(ticket)
+        self.ticket_lookup[ticket_id] = ticket
+
+        self.save_inventory()
+        self.save_tickets()
+
+        print(f"Ticket created successfully:\n Ticket ID: {ticket.ticket_id}\n Bike rented: {bike.bike_id}\n Customer: {customer.name}\n Start time: {ticket.start_time}")
         return ticket
 
-    def return_bike(self, ticket_id: int):
-        """Return a bike and calculate total fee."""
-        ticket = self.active_tickets.get(ticket_id)
+    def return_bike(self, ticket_id):
+        ticket = self.ticket_lookup.get(ticket_id)
         if not ticket:
-            raise ValueError("Ticket not found")
-        
-        end_time = datetime.now()
-        hours_rented = (end_time - ticket.start_time).total_seconds() / 3600
-        ticket.end_time = end_time
-        ticket.total_fee = round(hours_rented * ticket.bike.hourly_rate, 2)
-        ticket.bike.status = 'available'
+            print(f"No active ticket found for {ticket_id}")
+            return None
 
-        # Remove ticket from active tickets
-        del self.active_tickets[ticket_id]
-        self.save_data()
-        return ticket
+        ticket.bike.status = "available"
+        if ticket in self.active_tickets:
+            self.active_tickets.remove(ticket)
+        self.closed_tickets.append(ticket)
 
-    # --------------------
-    # Simple Reports
-    # --------------------
-    def total_active_rentals(self):
-        """Return the number of active rentals."""
-        return len(self.active_tickets)
+        self.save_inventory()
+        self.save_tickets()
 
-    def total_revenue(self):
-        """Return total revenue from completed tickets."""
-        # For simplicity, calculate from tickets that have end_time
-        completed_tickets = [t for t in self.active_tickets.values() if t.end_time is not None]
-        return sum(t.total_fee for t in completed_tickets)
+        total_fee = ticket.bike.hourly_rate * ticket.planned_hours
+        print(f"Bike returned. Total fee: ${total_fee}")
+        return total_fee
+
+    # ------------------------------
+    # JSON PERSISTENCE
+    # ------------------------------
+    def save_inventory(self):
+        data = []
+        for bike in self.inventory:
+            data.append({
+                "bike_id": bike.bike_id,
+                "make_model": bike.make_model,
+                "status": bike.status,
+                "hourly_rate": bike.hourly_rate
+            })
+        with open("inventory.json", "w") as f:
+            json.dump(data, f, indent=4)
+
+    def load_inventory(self):
+        try:
+            with open("inventory.json", "r") as f:
+                data = json.load(f)
+                for b in data:
+                    from bike import Bike
+                    bike = Bike(
+                        bike_id=b["bike_id"],
+                        make_model=tuple(b["make_model"]),
+                        status=b["status"],
+                        hourly_rate=b["hourly_rate"]
+                    )
+                    self.inventory.append(bike)
+                    self.bike_lookup[bike.bike_id] = bike
+        except FileNotFoundError:
+            pass
+
+    def save_tickets(self):
+        data = []
+        for ticket in self.active_tickets + self.closed_tickets:
+            data.append({
+                "ticket_id": ticket.ticket_id,
+                "bike_id": ticket.bike.bike_id,
+                "customer_name": ticket.customer.name,
+                "start_time": ticket.start_time.isoformat(),
+                "planned_hours": ticket.planned_hours
+            })
+        with open("tickets.json", "w") as f:
+            json.dump(data, f, indent=4)
+
+    def load_tickets(self):
+        try:
+            with open("tickets.json", "r") as f:
+                data = json.load(f)
+                from bike import Bike
+                from customer import Customer
+                for t in data:
+                    bike = self.bike_lookup.get(t["bike_id"])
+                    customer = Customer(name=t["customer_name"], customer_id="C1", phone="")
+                    ticket = Ticket(
+                        ticket_id=t["ticket_id"],
+                        bike=bike,
+                        customer=customer,
+                        start_time=datetime.fromisoformat(t["start_time"]),
+                        planned_hours=t.get("planned_hours", 1)
+                    )
+                    if bike.status == "rented":
+                        self.active_tickets.append(ticket)
+                    else:
+                        self.closed_tickets.append(ticket)
+                    self.ticket_lookup[ticket.ticket_id] = ticket
+        except FileNotFoundError:
+            pass
