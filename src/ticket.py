@@ -14,7 +14,7 @@ class Ticket:
         self.personal_notes = personal_notes
 
         # mark the bike rented
-        self.bike.mark_rented()
+        # self.bike.mark_rented()
 
     def __repr__(self):
         return (f"Ticket({self.id}, Bike {self.bike}, Customer {self.customer}, "
